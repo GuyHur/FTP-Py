@@ -3,30 +3,65 @@ import cryptography
 import sys
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
-public_key = rsa.publ
+
+#Constants:
+
+FILEPATH = 'Desktop/PTF/input/'
+
+
+
+
+#End Constants
+
+
 class PTFClient():
-    def __init__(self):
-        self.file = None
+    def __init__(self, file):
+        self.file = file
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.serveraddress = "127.0.0.1" # Could be sys.argv[1]
+        self.serveraddress = "127.0.0.1"# Could be sys.argv[1]
         self.serverport = 5001
-        self.state = 0
+        self.public_key = None
+        self.encrypted = None
 
 
-    def connect(self, serveraddress, serverport):
+    def connect_to_server(self):
         try:
             self.sock.connect(self.serveraddress, self.serverport)
-            self.sock.sendall(0)
-            print("[+]Connection successful" + serveraddress)
-        except Exception:
-            print("Connection failed")
+            print("[+]Connection successful" + self.serveraddress)
 
-    def recieve(self):
-        while self.state == 0:
-            #Recieve public key
-            public_key = self.sock.recv(2048)
+        except Exception as e:
+            print(e)
+
+    def recieve_key(self):
+        while True:
+            public_key = self.sock.recv(1024)
+            if not public_key:
+                print("Recieved public key.")
+                break
+        self.public_key = public_key
+    def handle_file(self):
+        with open(self.file, 'rb') as client_file:
+            self.encrypt_file(client_file.read(), self.public_key)
 
 
-    def main(self):
-        self.connect(self.serveraddress, self.serverport)
+    def encrypt_file(self,file, public_key):
+        encrypted = public_key.encrypt(file)
+        self.encrypted = encrypted
+
+    def send_file_to_server(self):
+        self.sock.send(self.encrypted)
+
+def main():
+    #Initialize client
+
+    #Creates instance of client --> python client.py filepath
+    client = PTFClient(file=sys.argv[1])
+    try:
+        client.connect_to_server()
+        client.recieve_key()
+        client.handle_file()
+
+
+    except Exception as e:
+        print(e)
 
