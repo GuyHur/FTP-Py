@@ -5,9 +5,8 @@ import socket
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
-from generate_keys import *
-
-
+import os
+import sys
 class PTFServer():
     """
     PTFServer
@@ -41,7 +40,6 @@ class PTFServer():
         """
         self.private_key = None
         self.public_key = None
-        self.decrypted_file = None
         self.host = "0.0.0.0"
         self.server_port = 5001
         self.buffer = 4096
@@ -66,16 +64,20 @@ class PTFServer():
         print("[+]Sending public key to client at :" + self.client.address)
         self.socket.send(self.public_key)
 
-    def save_file(self):
-        """
-        saves the file into the server folder
-        """
-
-    def decrypt_file(self, ):
+    def decrypt_file(self):
         """
         decrypts the file with the private key in private_key.pm
         """
-        self.decrypted_file = self.private_key.decrypt(self.encrypted_file)
+        original_file = private_key.decrypt(
+                    encrypted,
+                    padding.OAEP(
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None
+                    )
+                )
+        with open('decrypted_file', 'wb') as decrypted:
+            decrypted.write(original_file)
 
     def recieve_encrypted_file(self):
         """
@@ -96,7 +98,8 @@ class PTFServer():
         -Server initializes
         """
         try:
-            self.handle_keypairs()
+            self.generate_keypairs()
+            self.save_keypairs()
             # Creates Public & Private RSA keys and save them to self.public_key and self.private_key
             self.new_connections()
             # Accepts the connection and creates a new Client instance.
@@ -106,25 +109,38 @@ class PTFServer():
             # Recieves encrypted file from client
             self.decrypt_file()
             # Decrypts file from client using the private key
-            self.save_file()
             # Saves the decrypted file to the server output folder.
             self.socket.close()
-
 
         except Exception as exc:
             print(exc)
 
-    def handle_keypairs(self):
-        """
-        read private key from private_key.pem and save it to self.private_key
-        read public key from public_key.pem and save it to self.public_key
-        :var private_key - private key loaded from private_key.pem
-        :var public_key - public key loaded from public_key.pem
-        """
-        with open(self.path + "private_key.pem", "rb") as private_key_data:
-            self.private_key = load_pem_private_key(private_key_data.read(), password=None, backend=default_backend())
-        with open(self.path + "public_key.pem", "rb") as public_key_data:
-            self.public_key = load_pem_private_key(public_key_data.read(), password=None, backend=default_backend())
+    def generate_keypairs(self):
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
+        public_key = private_key.public_key()
+        self.private_key = private_key
+        self.public_key = public_key
+
+    def save_keypairs(self):
+        try:
+            if self.private_key == None or self.public_key == None:
+                print("Keys are not valid to save..")
+            pem = self.private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+            with open('private_key.pem', 'wb') as f:
+                f.write(pem)
+            pem = self.public_key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+            with open('public_key.pem', 'wb') as f:
+                f.write(pem)
+
+        except Exception as e:
+            print(e)
 
 
 def main():
