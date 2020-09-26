@@ -1,4 +1,3 @@
-import socket
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 import socket
@@ -7,10 +6,11 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 import os
 import sys
-class PTFServer():
+import threading
+class FTPServer():
     """
-    PTFServer
-    Server for the PTF program: http://github.com/GuyHur
+    FTPServer
+    Server for the FTP program: http://github.com/GuyHur/FTP
     """
 
     class Client():
@@ -19,7 +19,7 @@ class PTFServer():
         """
 
         def __init__(self, socket, address, name):
-            self.socket = socket
+            self.s = socket
             self.address = address
             self.name = name
 
@@ -38,37 +38,50 @@ class PTFServer():
         :var socket- socket
         :var client - client class
         """
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.private_key = None
         self.public_key = None
+        self.ThreadCount = 0
         self.host = "0.0.0.0"
         self.server_port = 5001
         self.buffer = 4096
         self.encrypted_file = None
         self.connections = []
-        self.path = "Desktop/PTF/"
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.path = "Desktop/FTP/"
         self.client = self.Client(None, None, None)
 
-    def new_connections(self):
-        while True:
-            name = self.socket.gethostbyname()
-            client_socket, client_address = self.server_socket.accept()
-            self.connections.append(self.Client(client_socket, client_address, name))
-            self.client = self.Client(client_socket, client_address, name)
-            print("[+] New Connection from: " + client_address)
+    def handle_client(self, client_socket, client_address):
+        print("[NEW CONNECTION]" + str(client_address) + "connected.")
+        self.send_public_key(client_socket, client_address)
+        print("[+] Sent public key to client.")
+        with open('recieved_file_encrypted', 'wb') as encrypted_file:
 
-    def send_public_key(self):
-        """
-        send_public_key(self) - sends client the public key
-        """
+            data = True
+            while data:
+                data = self.s.recv(self.buffer)
+
+                if not data:
+                    print("Finished receiving file.")
+                    break
+            encrypted_file.write(data)
+
+
+    def send_public_key(self, client_socket, client_address):
         print("[+]Sending public key to client at :" + self.client.address)
-        self.socket.send(self.public_key)
+        with open("public_key.pem", "rb") as public_key:
+            data = public_key.read(self.buffer)
+            while data:
+                client_socket.send(data)
+                print("Sent", repr(data))
+
+
+
 
     def decrypt_file(self):
         """
         decrypts the file with the private key in private_key.pm
         """
-        original_file = private_key.decrypt(
+        original_file = self.private_key.decrypt(
                     encrypted,
                     padding.OAEP(
                         mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -79,17 +92,21 @@ class PTFServer():
         with open('decrypted_file', 'wb') as decrypted:
             decrypted.write(original_file)
 
-    def recieve_encrypted_file(self):
-        """
-        recieves the file from the client.
-        :return:
-        """
-        while True:
-            data = self.socket.recv(self.buffer)
-            if not data:
-                print("Finished reciving file.")
-                break
-        self.encrypted_file = data
+    def start(self):
+        self.init()
+        try:
+            while True:
+                client_socket, client_address = self.s.accept()
+                thread = threading.Thread(target=self.handle_client(), args=(client_socket, client_address) )
+                thread.start()
+
+                self.send_public_key()
+                self.receive_encrypted_file()
+                self.decrypt_file()
+                self.s.close()
+
+        except Exception as e:
+            print(e)
 
     def init(self):
         """
@@ -100,20 +117,14 @@ class PTFServer():
         try:
             self.generate_keypairs()
             self.save_keypairs()
+            print("[+]Generated keys...")
             # Creates Public & Private RSA keys and save them to self.public_key and self.private_key
-            self.new_connections()
-            # Accepts the connection and creates a new Client instance.
-            self.send_public_key()
-            # Sends the connected client the public key
-            self.recieve_encrypted_file()
-            # Recieves encrypted file from client
-            self.decrypt_file()
-            # Decrypts file from client using the private key
-            # Saves the decrypted file to the server output folder.
-            self.socket.close()
+            self.s.bind((self.host, self.server_port))
+            print("Binding " + self.host + "to " + str(self.server_port))
+            self.s.listen()
 
         except Exception as exc:
-            print(exc)
+            print(str(exc))
 
     def generate_keypairs(self):
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
@@ -148,8 +159,8 @@ def main():
     starting function
     Runs server
     """
-    server = PTFServer()
-    server.init()
+    server = FTPServer()
+    server.start()
 
 
 if __name__ == '__main__':
